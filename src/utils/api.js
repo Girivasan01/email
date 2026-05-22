@@ -1,5 +1,5 @@
-export const API_BASE_URL = 'http://coral-chinchilla-989361.hostingersite.com/api';
-export const ASSET_BASE_URL = 'http://coral-chinchilla-989361.hostingersite.com';
+export const API_BASE_URL = 'https://coral-chinchilla-989361.hostingersite.com/api';
+export const ASSET_BASE_URL = 'https://coral-chinchilla-989361.hostingersite.com';
 
 export async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, options);
