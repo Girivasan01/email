@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, Save, X } from 'lucide-react';
+import { CheckCircle2, FileText, ImagePlus, Save, X } from 'lucide-react';
 import Dropzone from '../components/Dropzone.jsx';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import ImagePreviewGrid from '../components/ImagePreviewGrid.jsx';
 import PreviewFrame from '../components/PreviewFrame.jsx';
 import Spinner from '../components/Spinner.jsx';
-import { assetUrl } from '../utils/api.js';
+import { apiRequest, assetUrl } from '../utils/api.js';
 
 const MAX_IMAGES = 10;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export default function TemplateModal({ template, saving, error, onCancel, onSave }) {
   const [name, setName] = useState('');
@@ -17,12 +18,18 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
   const [existingImages, setExistingImages] = useState([]);
   const [newImages, setNewImages] = useState([]);
   const [localError, setLocalError] = useState('');
+  const [docxFileName, setDocxFileName] = useState('');
+  const [docxOriginalFilename, setDocxOriginalFilename] = useState('');
+  const [docxImportLoading, setDocxImportLoading] = useState(false);
+  const [docxImportSuccess, setDocxImportSuccess] = useState('');
+  const [bodyPreviewMode, setBodyPreviewMode] = useState(false);
   const imageUrls = useRef(new Set());
 
   useEffect(() => {
     setName(template?.name || '');
     setSubject(template?.subject || '');
-    setBody(template?.body || '');
+    setBody(template?.html_content || template?.body || '');
+    setDocxOriginalFilename(template?.original_filename || '');
     setExistingImages(
       (template?.image_paths || []).map((image) => ({
         ...image,
@@ -33,6 +40,8 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
     );
     setNewImages([]);
     setLocalError('');
+    clearDocxImportState();
+    setBodyPreviewMode(false);
   }, [template]);
 
   useEffect(() => {
@@ -41,6 +50,55 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
       imageUrls.current.clear();
     };
   }, []);
+
+  async function importDocx(files) {
+    const file = files[0];
+    setLocalError('');
+    setDocxImportSuccess('');
+
+    if (!file) {
+      return;
+    }
+
+    const isDocx = file.name.toLowerCase().endsWith('.docx') || file.type === DOCX_MIME_TYPE;
+    if (!isDocx) {
+      setLocalError('Word imports must be .docx files.');
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setLocalError('The Word document must be 10MB or smaller.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('docxFile', file);
+
+    setDocxFileName(file.name);
+    setDocxOriginalFilename(file.name);
+    setDocxImportLoading(true);
+
+    try {
+      const data = await apiRequest('/templates/parse-docx', {
+        method: 'POST',
+        body: formData,
+      });
+      setBody(data.html || '');
+      setBodyPreviewMode(false);
+      setDocxImportSuccess('Content imported successfully! Review and edit below.');
+    } catch (err) {
+      setLocalError(err.message);
+    } finally {
+      setDocxImportLoading(false);
+    }
+  }
+
+  function clearDocxImportState() {
+    setDocxFileName('');
+    setDocxOriginalFilename('');
+    setDocxImportLoading(false);
+    setDocxImportSuccess('');
+  }
 
   function addImages(files) {
     setLocalError('');
@@ -100,7 +158,10 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
     const formData = new FormData();
     formData.append('name', name.trim());
     formData.append('subject', subject.trim());
-    formData.append('body', body.trim());
+    formData.append('html_content', body.trim());
+    if (docxOriginalFilename) {
+      formData.append('original_filename', docxOriginalFilename);
+    }
     if (template?.id) {
       formData.append('existingImages', JSON.stringify(existingImages.map(({ url, id, name: imageName, ...image }) => image)));
     }
@@ -163,19 +224,73 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
               </div>
             </div>
 
+            <div>
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700">Import from Word Document (optional)</h4>
+                  <p className="text-sm text-slate-500">Upload a .docx file to extract headings, lists, tables, and text styling into HTML.</p>
+                </div>
+                {docxFileName || docxImportSuccess ? (
+                  <button
+                    type="button"
+                    onClick={clearDocxImportState}
+                    disabled={docxImportLoading}
+                    className="inline-flex w-fit items-center justify-center rounded-md border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-primary hover:text-primary disabled:cursor-wait disabled:opacity-60"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <Dropzone
+                label={docxFileName || 'Drop a .docx file here or click to upload'}
+                description={docxImportLoading ? 'Extracting content...' : 'Accepted format: .docx. Maximum 10MB.'}
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                icon={FileText}
+                disabled={docxImportLoading}
+                onFiles={importDocx}
+              />
+              {docxImportLoading ? (
+                <div className="mt-3 text-sm font-semibold text-primary">
+                  <Spinner label="Extracting content..." />
+                </div>
+              ) : null}
+              {docxImportSuccess ? <SuccessBanner message={docxImportSuccess} /> : null}
+            </div>
+
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <div>
-                <label className="block text-sm font-semibold text-slate-700" htmlFor="template-body">
-                  Email Body
-                </label>
-                <textarea
-                  id="template-body"
-                  value={body}
-                  onChange={(event) => setBody(event.target.value)}
-                  rows={11}
-                  className="mt-2 w-full resize-y rounded-lg border border-slate-300 px-3 py-3 text-slate-900"
-                  placeholder="Hi [Name],&#10;&#10;Thanks for joining us..."
-                />
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="template-body">
+                    Email Body
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setBodyPreviewMode((current) => !current)}
+                    className={[
+                      'inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-bold transition',
+                      bodyPreviewMode
+                        ? 'border-primary bg-indigo-50 text-primary'
+                        : 'border-slate-300 text-slate-700 hover:border-primary hover:text-primary',
+                    ].join(' ')}
+                  >
+                    {bodyPreviewMode ? 'Edit HTML' : 'Preview'}
+                  </button>
+                </div>
+                {bodyPreviewMode ? (
+                  <div
+                    className="mt-2 min-h-72 overflow-auto rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900"
+                    dangerouslySetInnerHTML={{ __html: body || '<p style="color:#64748b">Email preview appears here.</p>' }}
+                  />
+                ) : (
+                  <textarea
+                    id="template-body"
+                    value={body}
+                    onChange={(event) => setBody(event.target.value)}
+                    rows={11}
+                    className="mt-2 w-full resize-y rounded-lg border border-slate-300 px-3 py-3 text-slate-900"
+                    placeholder="Hi [Name],&#10;&#10;Thanks for joining us..."
+                  />
+                )}
                 <p className="mt-2 text-sm text-slate-500">Supports [Name] personalization and HTML.</p>
               </div>
               <div>
@@ -221,6 +336,19 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function SuccessBanner({ message }) {
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+      <p>{message}</p>
     </div>
   );
 }

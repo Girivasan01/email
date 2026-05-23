@@ -147,6 +147,7 @@ export default function Templates() {
 
 function TemplateCard({ template, deleting, onEdit, onDelete, onUse }) {
   const firstImage = template.image_paths?.[0];
+  const previewHtml = template.html_content || template.body;
 
   return (
     <article className="flex min-h-80 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft">
@@ -164,7 +165,7 @@ function TemplateCard({ template, deleting, onEdit, onDelete, onUse }) {
         <div className="min-w-0">
           <h3 className="truncate text-lg font-bold text-slate-950">{template.name}</h3>
           <p className="mt-1 truncate text-sm font-semibold text-primary">{template.subject}</p>
-          <p className="mt-3 line-clamp-4 text-sm leading-6 text-slate-600">{stripHtml(template.body)}</p>
+          <p className="mt-3 line-clamp-4 text-sm leading-6 text-slate-600">{stripHtml(previewHtml)}</p>
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-5">

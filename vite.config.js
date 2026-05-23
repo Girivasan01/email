@@ -9,7 +9,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://coral-chinchilla-989361.hostingersite.com',
+      '/api': {
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });

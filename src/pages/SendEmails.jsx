@@ -82,7 +82,7 @@ export default function SendEmails() {
   );
 
   const activeSubject = useTemplate ? selectedTemplate?.subject || '' : subject;
-  const activeBody = useTemplate ? selectedTemplate?.body || '' : body;
+  const activeBody = useTemplate ? selectedTemplate?.html_content || selectedTemplate?.body || '' : body;
   const canSend = Boolean(excelFile && recipients.length && activeSubject.trim() && activeBody.trim() && !sending);
 
   async function handleExcelUpload(files) {
