@@ -2,9 +2,9 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const isLocalHost = typeof window !== 'undefined' && LOCAL_HOSTS.has(window.location.hostname);
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || (isLocalHost ? '/api' : 'http://coral-chinchilla-989361.hostingersite.com/api');
+  import.meta.env.VITE_API_BASE_URL || (isLocalHost ? '/api' : 'https://coral-chinchilla-989361.hostingersite.com/api');
 export const ASSET_BASE_URL =
-  import.meta.env.VITE_ASSET_BASE_URL || (isLocalHost ? 'http://localhost:3000' : 'http://coral-chinchilla-989361.hostingersite.com');
+  import.meta.env.VITE_ASSET_BASE_URL || (isLocalHost ? 'http://localhost:3000' : 'https://coral-chinchilla-989361.hostingersite.com');
 
 export async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, options);
