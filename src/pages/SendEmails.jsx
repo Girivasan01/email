@@ -6,7 +6,7 @@ import ErrorBanner from '../components/ErrorBanner.jsx';
 import ImagePreviewGrid from '../components/ImagePreviewGrid.jsx';
 import PreviewFrame from '../components/PreviewFrame.jsx';
 import Spinner from '../components/Spinner.jsx';
-import { apiRequest } from '../utils/api.js';
+import { apiRequest, API_BASE_URL } from '../utils/api.js';
 import { downloadResultsCsv } from '../utils/csv.js';
 import { parseRecipientWorkbook } from '../utils/excel.js';
 
@@ -29,6 +29,7 @@ export default function SendEmails() {
   const [sendError, setSendError] = useState('');
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState(null);
+  const [sendProgress, setSendProgress] = useState({ sent: 0, failed: 0, total: 0 });
   const attachmentUrls = useRef(new Set());
 
   useEffect(() => {
@@ -165,13 +166,69 @@ export default function SendEmails() {
     setSending(true);
     setSendError('');
     setResults(null);
+    setSendProgress({ sent: 0, failed: 0, total: 0 });
 
     try {
-      const data = await apiRequest('/emails/send', {
+      const response = await fetch(`${API_BASE_URL}/emails/send`, {
         method: 'POST',
         body: formData,
       });
-      setResults(data);
+
+      if (!response.ok) {
+        const payload = await response.text();
+        throw new Error(payload || 'Failed to send emails.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let completedResults = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        let boundaryIndex;
+
+        while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
+          const chunk = buffer.slice(0, boundaryIndex);
+          buffer = buffer.slice(boundaryIndex + 2);
+          const line = chunk.trim();
+
+          if (!line) {
+            continue;
+          }
+
+          if (line.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.sent !== undefined && payload.failed !== undefined && payload.total !== undefined) {
+                setSendProgress({ sent: payload.sent, failed: payload.failed, total: payload.total });
+              }
+
+              if (payload.done) {
+                completedResults = payload.results || [];
+              }
+            } catch (err) {
+              console.warn('Failed to parse SSE payload:', err);
+            }
+          }
+        }
+      }
+
+      if (completedResults) {
+        setResults({
+          total: completedResults.length,
+          sent: completedResults.filter((item) => item.status === 'sent').length,
+          failed: completedResults.filter((item) => item.status !== 'sent').length,
+          results: completedResults,
+        });
+      } else {
+        setSendError('Email send completed without a final progress message.');
+      }
     } catch (err) {
       setSendError(err.message);
     } finally {
@@ -363,6 +420,25 @@ export default function SendEmails() {
           <p className="text-sm text-slate-500">Upload recipients and provide a subject and body before sending.</p>
         ) : null}
       </section>
+
+      {sending ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft">
+          <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-600">
+            <span>
+              Sending {sendProgress.sent + sendProgress.failed} / {sendProgress.total} recipients
+            </span>
+            <span>
+              {sendProgress.total ? `${Math.round(((sendProgress.sent + sendProgress.failed) / sendProgress.total) * 100)}%` : 'Starting...'}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${sendProgress.total ? Math.min(100, ((sendProgress.sent + sendProgress.failed) / sendProgress.total) * 100) : 0}%` }}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {results ? (
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft">

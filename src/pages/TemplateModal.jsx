@@ -85,7 +85,18 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
       });
       setBody(data.html || '');
       setBodyPreviewMode(false);
+      setDocxOriginalFilename(data.original_filename || file.name);
       setDocxImportSuccess('Content imported successfully! Review and edit below.');
+
+      if (Array.isArray(data.image_paths) && data.image_paths.length) {
+        const importedImages = data.image_paths.map((image) => ({
+          ...image,
+          id: image.path,
+          url: image.path,
+          name: image.originalName || image.filename || String(image.path || '').split('/').pop(),
+        }));
+        setExistingImages((current) => [...current, ...importedImages]);
+      }
     } catch (err) {
       setLocalError(err.message);
     } finally {
@@ -162,7 +173,7 @@ export default function TemplateModal({ template, saving, error, onCancel, onSav
     if (docxOriginalFilename) {
       formData.append('original_filename', docxOriginalFilename);
     }
-    if (template?.id) {
+    if (existingImages.length) {
       formData.append('existingImages', JSON.stringify(existingImages.map(({ url, id, name: imageName, ...image }) => image)));
     }
     newImages.forEach((image) => {
